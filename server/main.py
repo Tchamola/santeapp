@@ -12,6 +12,7 @@ app = FastAPI()
 class PatientCreate(BaseModel):
     age: int
     poids: float
+    taille: float
     survecu: bool
     zone : str
 
@@ -26,19 +27,27 @@ def get_db():
 # On crée une routte pour AJOUTER un patient
 @app.post("/patients")
 def ajouter_patient(patient_recu : PatientCreate, db : Session = Depends(get_db)):
+
+    # Calcul automatique de l'IMC avant l'enregistrement dans la base de données
+    imc_calcule = 0
+    if patient_recu.taille > 0:
+        imc_calcule = round(patient_recu.poids/(patient_recu.taille ** 2), 2)
+
     # On transforme les données reçues en un objet compatible avec notre base PostgreSQL
     nouveau_patient = PatientModel(
         age = patient_recu.age,
         poids = patient_recu.poids,
+        taille = patient_recu.taille,
+        imc = imc_calcule,
         survecu = patient_recu.survecu,
-        zone = patient_recu.zone
+        zone = patient_recu.zone,
     )
     # On l'ajoute, on valide la transaction dans la base de données et on met à jour
     db.add(nouveau_patient)
     db.commit()
     db.refresh(nouveau_patient) # On récupère son ID généré automatiquement
 
-    return {"message": "Patient ajouté avec succès !", "patient_id": nouveau_patient.id}
+    return {"message": "Patient ajouté avec succès !", "patient_id": nouveau_patient.id, "imc_enregistre" : imc_calcule}
 
 # 3. On crée notre "Endpoint" (le point d'accès sur le web)
 @app.get("/stats")
@@ -57,6 +66,7 @@ def obtenir_statistiques(db : Session = Depends(get_db)):
         }
     # Variables globales pour les stats générales :
     total_age = 0
+    total_imc = 0
     nombre_total = len(patients)
     deces = 0
     # Dictionnaire pour compter les cas par zone (Prévalence) :
@@ -66,12 +76,13 @@ def obtenir_statistiques(db : Session = Depends(get_db)):
     for patient in patients :
         # On calcul l'âge et les décès (avec SQLAlchemy on utilise 'patient.age')
         # et non des crochets 'patient["age"]
-        total_age += patient.age                  # au lieu de (total_age += patient["age"])
+        total_age += patient.age 
+        total_imc += patient.imc                 # au lieu de (total_age += patient["age"])
         if not patient.survecu:                   # if not patient["survecu"] :
             deces += 1
         # --- Logique de prévalence --- :
         zone_du_patient = patient.zone        #zone_du_patient = patient["zone"]
-
+    
         # Si la zone n'est pas encore dans notre dictionnaire, on l'initialise à 0
         if zone_du_patient not in cas_par_zone:
             cas_par_zone[zone_du_patient] = 0
@@ -81,6 +92,7 @@ def obtenir_statistiques(db : Session = Depends(get_db)):
 
     # Calculs des statistiques globales
     age_moyen = round(total_age / nombre_total, 2)
+    imc_moyen = round(total_imc/nombre_total, 2)
     taux_letalite = round((deces / nombre_total) * 100, 2)
 
     # 4. On retourne les résultats sous forme de dictionnaire (JSON)
@@ -88,9 +100,10 @@ def obtenir_statistiques(db : Session = Depends(get_db)):
         "Statistiques_globales": {
             "nombre_total_cas": nombre_total,
             "age_moyen_ans": age_moyen,
+            "imc_moyen_global": imc_moyen,
             "taux_letalite_pourcentage": taux_letalite
         },
-        "prevalence_par_zone": cas_par_zone
+        "prevalence_par_zone": cas_par_zone,
     }
 
 

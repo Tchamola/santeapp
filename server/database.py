@@ -17,12 +17,15 @@ Base = declarative_base()
 
 # 5. On définit notre table "patients" (Le Modèle)
 class PatientModel(Base):
-    __tablename__ = "patient"
+    __tablename__ = "patients"
     id = Column(Integer, primary_key=True, index=True)
     age = Column(Integer, nullable=False)
     poids = Column(Float, nullable=False)
+    taille = Column(Float, nullable=False)
+    imc = Column(Float, nullable=False)
     survecu = Column(Boolean, default=True, nullable=False)
     zone = Column(String, nullable=False)
+    
 
 
 
